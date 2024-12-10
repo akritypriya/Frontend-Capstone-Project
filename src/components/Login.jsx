@@ -1,7 +1,15 @@
 import { useState } from 'react'
 import {  login } from '../services'
+import  {useNavigate} from 'react-router-dom'
 
 function Login() {
+  const navigate=useNavigate();
+  if(localStorage.getItem('token')){
+    alert('already logged in')
+    navigate('/home')
+  }
+
+  
   const [loginformData, setLoginformData] = useState({
     email: '',
     password: '',
@@ -10,7 +18,10 @@ function Login() {
     e.preventDefault()
     const res = await login(loginformData)
     if (res.status === 200) {
+      //before moving to next page we are storing token in local storage
+      localStorage.setItem('token',res.token)
       alert('logged in successfully')
+      navigate('/home') //when logged in move to homepage
     }
     else {
       console.log(res)
