@@ -18,13 +18,12 @@ export const login = (data) => {
         body: JSON.stringify(data),
     })
 }
-export const getJobs = () => {
-    return fetch(`${URL}/job`, {
+export const getJobs = ({ limit, offset, name }) => {
+    return fetch(`${URL}/job?limit=${limit}&offset=${offset}&name=${name}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
         },
-        
     })
 }
 

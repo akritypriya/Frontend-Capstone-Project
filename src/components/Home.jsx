@@ -1,39 +1,86 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getJobs } from '../services'
 import { useNavigate } from 'react-router-dom'
 import { deleteJob } from '../services'
+
 export default function Home() {
     const [jobs, setJobs] = useState([])
     const [loading, setLoading] = useState(true)
-    const fetchJobs=async()=>{
-        setLoading(true)
-        const res=await getJobs()
-        if(res.status===200){
-            const data=await res.json()
-            setJobs(data)
-        }
-        else{
-            console.log(res)
-        }
-        setLoading(false)
+    const [limit, setLimit] = useState(10)
+    const [offset, setOffset] = useState(0)
+    const [count, setCount] = useState(0)
+    const [search, setSearch] = useState('')
 
+    const navigate = useNavigate()
+    const abortControllerRef = useRef(null)
+    const debounceTimerRef = useRef(null)
 
-    }
-    useEffect(() => {
-        const fetchJobs = async () => {
-             setLoading(true)
-            const res = await getJobs()
+    const fetchJobs = useCallback(async () => {
+        // Cancel any ongoing request
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort()
+        }
+
+        // Create a new AbortController
+        abortControllerRef.current = new AbortController()
+        const signal = abortControllerRef.current.signal
+
+        try {
+            setLoading(true)
+            const res = await getJobs({
+                limit,
+                offset: offset * limit,
+                name: search,
+                signal
+            })
+
             if (res.status === 200) {
                 const data = await res.json()
-                setJobs(data)
+                setJobs(data.jobs)
+                setCount(data.count)
+            } else {
+                console.error('Failed to fetch jobs', res)
             }
-            else {
-                console.log(res)
+        } catch (error) {
+            // Handle abort or other errors
+            if (error.name === 'AbortError') {
+                console.log('Request was cancelled')
+            } else {
+                console.error('Error fetching jobs', error)
             }
-             setLoading(false)
+        } finally {
+            setLoading(false)
         }
-        fetchJobs()
-    }, [])
+    }, [limit, offset, search])
+
+    // Debounced fetch jobs
+    const debouncedFetchJobs = useCallback(() => {
+        // Clear any existing timer
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current)
+        }
+
+        // Set a new timer
+        debounceTimerRef.current = setTimeout(() => {
+            fetchJobs()
+        }, 2000) // 500ms debounce time
+    }, [fetchJobs])
+
+    // Effect to trigger debounced fetch
+    useEffect(() => {
+        debouncedFetchJobs()
+
+        // Cleanup function
+        return () => {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current)
+            }
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort()
+            }
+        }
+    }, [limit, offset, search, debouncedFetchJobs])
+
     const handleDeleteJob = async (id) => {
         try {
             const res = await deleteJob(id)
@@ -53,25 +100,71 @@ export default function Home() {
             alert('Error deleting job')
         }
     }
-    console.log(jobs)
-    const navigate=useNavigate()
 
     return (
-      <div>
-      <h1>Home</h1>
-      {loading ? <h1>loading...</h1> : jobs.map((job) => (
-          <div key={job.id}>
-              <h2>{job.companyName}</h2>
-              <p>{job.jobPosition}</p>
+        <div>
+            <h1>Home</h1>
+            <input
+                type="text"
+                onChange={(e) => setSearch(e.target.value)}
+                value={search}
+                placeholder="Search"
+            />
+            {loading ? (
+                <h1>Loading...</h1>
+            ) : (
+                <>
+
+                    <div
+                        style={{
+                            height: "400px",
+                            width: "400px",
+                            overflow: "scroll",
+                            border: "1px solid black",
+                            margin: "10px",
+                            padding: "10px",
+                        }}
+                    >
+                        {jobs.map((job) => (
+                            <div key={job.id}>
+                            <h2>{job.companyName}</h2>
+             <p>{job.jobPosition}</p>
               <p>{job.salary}</p>
+              <p>{job.jobDescription}</p>
               <p>{job.jobType}</p>
+              <p>{job.skills}</p>
               <p>{job.location}</p>
               <p>{job.jobDescription}</p>
-              <button onClick={()=>navigate(`/editJob/${job._id}`)}>edit</button>
-              <button onClick={() => handleDeleteJob(job._id)}>Delete</button>
-                                
-          </div>
-      ))}
-  </div>
-)
+                                <button onClick={() => navigate(`/editJob/${job._id}`)}>
+                                    Edit
+                                </button>
+                                <button onClick={() => handleDeleteJob(job._id)}>
+                                    Delete
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                    <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+                        <option value="10">10</option>
+                        <option value="15">15</option>
+                        <option value="20">20</option>
+                        <option value="25">25</option>
+                        <option value="30">30</option>
+                    </select>
+                    <button
+                        disabled={offset === 0}
+                        onClick={() => setOffset((prevOffset) => prevOffset - 1)}
+                    >
+                        Prev
+                    </button>
+                    <button
+                        disabled={offset * limit + limit >= count}
+                        onClick={() => setOffset((prevOffset) => prevOffset + 1)}
+                    >
+                        Next
+                    </button>
+                </>
+            )}
+        </div>
+    )
 }
